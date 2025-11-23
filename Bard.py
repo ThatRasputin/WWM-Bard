@@ -1,7 +1,7 @@
 """
 Bard.py
 The Player Engine (Single-Thread Focus).
-Last Update: 2025-11-22 20:50 EST (v16.0 - Menu Duration Display)
+Last Update: 2025-11-22 21:10 EST (v17.0 - Responsive Stop)
 """
 import time
 import ctypes
@@ -14,7 +14,7 @@ import random
 # ==========================================
 # CONFIGURATION
 # ==========================================
-STOP_HOTKEY = 0x01      # ESC key scan code
+VK_ESCAPE = 0x1B        # Virtual Key for ESC
 COUNTDOWN_SEC = 5       # Seconds to switch window
 TIMEOUT_SECONDS = 20    # Menu auto-pick timeout
 SONGS_DIR = "songs"     
@@ -67,6 +67,23 @@ def format_time(seconds):
     s = int(seconds % 60)
     return f"{m:02d}:{s:02d}"
 
+def interruptible_sleep(duration):
+    """
+    Sleeps for 'duration' seconds, but checks for ESC key every 0.05s.
+    Returns True if interrupted by user, False otherwise.
+    """
+    end_time = time.time() + duration
+    while time.time() < end_time:
+        # Check ESC key
+        if ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000:
+            return True
+        
+        # Sleep in tiny increments to allow polling
+        sleep_chunk = min(0.05, end_time - time.time())
+        if sleep_chunk > 0:
+            time.sleep(sleep_chunk)
+    return False
+
 def play_chord(note_data, duration, bpm):
     seconds_per_beat = 60.0 / bpm
     base_sleep = duration * seconds_per_beat
@@ -90,6 +107,10 @@ def play_chord(note_data, duration, bpm):
 
     mod_code = KEYS.get(modifier) if modifier else None
     
+    # === CHECK ESC BEFORE PLAYING ===
+    if ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000:
+        return True
+
     if keys_to_press:
         if mod_code:
             PressKey(mod_code)
@@ -104,9 +125,17 @@ def play_chord(note_data, duration, bpm):
             ReleaseKey(mod_code)
         
         overhead = PRESS_DURATION + (MOD_LEAD_TIME if mod_code else 0) + (0.05 if mod_code else 0)
-        time.sleep(max(0, actual_total_duration - overhead))
+        remaining_time = max(0, actual_total_duration - overhead)
+        
+        # USE INTERRUPTIBLE SLEEP
+        if interruptible_sleep(remaining_time):
+            return True
     else:
-        time.sleep(actual_total_duration)
+        # REST case
+        if interruptible_sleep(actual_total_duration):
+            return True
+            
+    return False
 
 def get_song_duration(notes, bpm):
     total_beats = 0
@@ -140,17 +169,25 @@ def play_song_from_file(filepath):
     print(f"\n>>> NOW PLAYING: {title} <<<")
     print(f"(Press 'ESC' to stop)")
 
+    # Clear any lingering ESC presses before starting
+    ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE)
+
     try:
         for instruction in notes:
-            if ctypes.windll.user32.GetAsyncKeyState(0x1B) & 0x8000:
-                print("\n[!] Music stopped by user.")
-                return
+            # Check logic is now handled inside play_chord for responsiveness
             
             timer_str = f"[{format_time(elapsed_time)} / {format_time(total_duration)}]"
             print(f"\rPlaying... {timer_str}   ", end="")
             
             duration = instruction[-1]
-            play_chord(instruction, duration, bpm)
+            
+            # PLAY CHORD RETURNS TRUE IF INTERRUPTED
+            interrupted = play_chord(instruction, duration, bpm)
+            
+            if interrupted:
+                print("\n[!] Music stopped by user.")
+                return
+
             elapsed_time += (duration * (60.0 / bpm))
             
     finally:

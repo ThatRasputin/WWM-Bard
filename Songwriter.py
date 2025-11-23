@@ -1,7 +1,7 @@
 """
 Songwriter.py
 Compiles composition modules into playable JSON files.
-Last Update: 2025-11-22 20:45 EST (v11.0 - Added Duration Calc)
+Last Update: 2025-11-22 20:55 EST (v12.0 - Debug Mode)
 """
 import os
 import json
@@ -31,7 +31,6 @@ def get_duration_str(song_data):
     if not notes:
         return "00:00"
 
-    # Sum the last element of every instruction (the duration)
     total_beats = sum(instruction[-1] for instruction in notes)
     total_seconds = total_beats * (60.0 / bpm)
     
@@ -102,10 +101,14 @@ def load_and_compile():
                 else:
                     print(f"[!] Error in {filename}: Returned dictionary is missing required 'title', 'notes', or 'tracks' keys.")
             else:
+                # DEBUGGING BLOCK
                 print(f"[-] Skipped {filename}: No compose() function found.")
+                print(f"    Debug: This file contains: {[d for d in dir(module) if not d.startswith('__')]}")
                 
         except Exception as e:
             print(f"[!] Failed to compile {filename}: {e}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     print("========================================")

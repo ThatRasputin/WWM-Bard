@@ -1,7 +1,7 @@
 """
 MusicUtils.py
 Shared tools for the Auto-Bard Songwriters.
-Last Update: 2025-11-22 20:45 EST (v16.0 - Added Debug Tools)
+Last Update: 2025-11-22 22:30 EST (v20.0 - Smart Scale Correction)
 """
 import random
 
@@ -15,6 +15,7 @@ ALL_NOTES = [
 ]
 
 SCALES = {
+    # Pentatonic-ish scales for Wuxia feel
     "GONG": ["L1", "L2", "L3", "L5", "L6", "M1", "M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5", "H6"], 
     "YU":   ["L6", "M1", "M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5", "H6"], 
     "OUTLIER": ["L6", "M1", "M3", "M4", "M5", "M7", "H1", "H2", "H3", "H6"] 
@@ -27,6 +28,7 @@ SCALES = {
 def develop_motif(motif, evolution="variation", scale=SCALES["YU"]):
     """
     Takes a base melody and evolves it.
+    CRITICAL UPDATE: Now respects the 'scale' to prevent dissonance.
     """
     new_motif = []
     
@@ -45,27 +47,43 @@ def develop_motif(motif, evolution="variation", scale=SCALES["YU"]):
 
         new_notes = []
         for n in notes:
+            # If note is not in our mapped list, keep it as is
             if n not in ALL_NOTES:
                 new_notes.append(n)
                 continue
-                
-            curr_idx = ALL_NOTES.index(n)
+            
+            # --- SMART SCALE LOGIC ---
+            # 1. Determine where this note sits in the provided SCALE
+            # If the note isn't in the scale, we default to finding it in ALL_NOTES
+            # but we prioritize the scale index for movement.
+            
+            if n in scale:
+                curr_idx = scale.index(n)
+                pool = scale
+            else:
+                curr_idx = ALL_NOTES.index(n)
+                pool = ALL_NOTES
             
             if evolution == 'variation':
-                shift = random.choice([-2, -1, 0, 1, 2])
-                new_idx = max(0, min(len(ALL_NOTES)-1, curr_idx + shift))
-                new_notes.append(ALL_NOTES[new_idx])
+                # Step up/down within the SCALE, not the chromatic list
+                shift = random.choice([-1, 0, 1]) 
+                new_idx = max(0, min(len(pool)-1, curr_idx + shift))
+                new_notes.append(pool[new_idx])
                 
             elif evolution == 'inversion':
-                midpoint = 10
+                # Flip around the midpoint of the scale
+                midpoint = len(pool) // 2
                 diff = curr_idx - midpoint
-                new_idx = max(0, min(len(ALL_NOTES)-1, midpoint - diff))
-                new_notes.append(ALL_NOTES[new_idx])
+                new_idx = max(0, min(len(pool)-1, midpoint - diff))
+                new_notes.append(pool[new_idx])
                 
             elif evolution == 'expansion':
+                # Shift octaves if possible
                 if n.startswith("L"): new_notes.append(n.replace("L", "M"))
                 elif n.startswith("M"): new_notes.append(n.replace("M", "H"))
                 else: new_notes.append(n) 
+            else:
+                new_notes.append(n) # Fallback
                 
         if modifier:
             new_motif.append((new_notes, modifier, duration))
@@ -73,6 +91,52 @@ def develop_motif(motif, evolution="variation", scale=SCALES["YU"]):
             new_motif.append((new_notes, duration))
             
     return new_motif
+
+def extend_motif(motif, add_count=2, scale=SCALES["YU"]):
+    """
+    Appends notes from the scale to end of motif.
+    """
+    new_motif = list(motif)
+    for _ in range(add_count):
+        note = random.choice(scale)
+        # Faster notes for extensions to avoid dragging
+        duration = random.choice([0.5, 0.25])
+        new_motif.append(([note], duration))
+    return new_motif
+
+def mutate_rhythm(motif):
+    """
+    Shuffles durations.
+    """
+    durations = [inst[-1] for inst in motif]
+    random.shuffle(durations)
+    
+    new_motif = []
+    for i, instruction in enumerate(motif):
+        parts = list(instruction)
+        parts[-1] = durations[i]
+        new_motif.append(tuple(parts))
+        
+    return new_motif
+
+def progressive_repeat(motif, count, scale=SCALES["YU"]):
+    """
+    Plays a motif 'count' times, applying evolutions AND extensions.
+    """
+    block = []
+    evolutions = ['base', 'variation', 'extension', 'variation']
+    
+    for i in range(count):
+        evo = evolutions[i % len(evolutions)]
+        
+        if evo == 'base':
+            block.extend(motif)
+        elif evo == 'extension':
+            block.extend(extend_motif(motif, add_count=3, scale=scale))
+        else:
+            block.extend(develop_motif(motif, evolution=evo, scale=scale))
+            
+    return block
 
 # ==========================================
 # TECHNIQUE GENERATORS
@@ -155,7 +219,8 @@ def style_apply(pattern, style_level="base", scale=SCALES["YU"]):
             continue
 
         if style_level == 'virtuoso':
-            if duration >= 1.0 and random.random() > 0.4:
+            # Reduced probability of crazy fills to keep it grounded
+            if duration >= 1.0 and random.random() > 0.6:
                 scale_segment = [n for n in scale if n in ALL_NOTES[5:15]]
                 fill_notes = random.sample(scale_segment, k=3)
                 new_pattern.extend(arpeggio(fill_notes, 0.125, 'up'))
@@ -177,14 +242,7 @@ def style_apply(pattern, style_level="base", scale=SCALES["YU"]):
             
     return new_pattern
 
-# ==========================================
-# DEBUG TOOLS
-# ==========================================
 def check_length(notes, bpm=120):
-    """
-    Prints the duration of a list of notes.
-    Useful for composers checking sections while writing.
-    """
     total_beats = sum(n[-1] for n in notes)
     seconds = total_beats * (60.0 / bpm)
     print(f"Section Length: {seconds:.1f} seconds ({total_beats} beats at {bpm} BPM)")

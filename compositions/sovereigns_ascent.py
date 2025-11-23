@@ -1,190 +1,132 @@
 """
-MusicUtils.py
-Shared tools for the Auto-Bard Songwriters.
-Last Update: 2025-11-22 20:45 EST (v16.0 - Added Debug Tools)
+sovereigns_ascent.py
+A grand, sweeping Guqin piece.
+v6.0: Increased Density and Tempo. Fixed Dissonance via MusicUtils v20.
+Last Update: 2025-11-22 22:35 EST
 """
+import MusicUtils as utils
 import random
 
-# ==========================================
-# MUSIC THEORY CONSTANTS
-# ==========================================
-ALL_NOTES = [
-    "L1", "L2", "L3", "L4", "L5", "L6", "L7",
-    "M1", "M2", "M3", "M4", "M5", "M6", "M7",
-    "H1", "H2", "H3", "H4", "H5", "H6", "H7"
-]
-
-SCALES = {
-    "GONG": ["L1", "L2", "L3", "L5", "L6", "M1", "M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5", "H6"], 
-    "YU":   ["L6", "M1", "M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5", "H6"], 
-    "OUTLIER": ["L6", "M1", "M3", "M4", "M5", "M7", "H1", "H2", "H3", "H6"] 
-}
-
-# ==========================================
-# MOTIF DEVELOPMENT 
-# ==========================================
-
-def develop_motif(motif, evolution="variation", scale=SCALES["YU"]):
-    """
-    Takes a base melody and evolves it.
-    """
-    new_motif = []
+def compose():
+    # ==========================================
+    # SETTINGS
+    # ==========================================
+    TITLE = "The Sovereign's Ascent"
+    BPM = 110 # Increased from 85 to reduce dragging
+    SCALE = utils.SCALES["GONG"] 
     
-    for instruction in motif:
-        if len(instruction) == 3:
-            notes, modifier, duration = instruction
-        elif len(instruction) == 2:
-            notes, duration = instruction
-            modifier = None
-        else:
-            continue
+    track = []
 
-        if notes == ["REST"]:
-            new_motif.append(instruction)
-            continue
-
-        new_notes = []
-        for n in notes:
-            if n not in ALL_NOTES:
-                new_notes.append(n)
-                continue
-                
-            curr_idx = ALL_NOTES.index(n)
-            
-            if evolution == 'variation':
-                shift = random.choice([-2, -1, 0, 1, 2])
-                new_idx = max(0, min(len(ALL_NOTES)-1, curr_idx + shift))
-                new_notes.append(ALL_NOTES[new_idx])
-                
-            elif evolution == 'inversion':
-                midpoint = 10
-                diff = curr_idx - midpoint
-                new_idx = max(0, min(len(ALL_NOTES)-1, midpoint - diff))
-                new_notes.append(ALL_NOTES[new_idx])
-                
-            elif evolution == 'expansion':
-                if n.startswith("L"): new_notes.append(n.replace("L", "M"))
-                elif n.startswith("M"): new_notes.append(n.replace("M", "H"))
-                else: new_notes.append(n) 
-                
-        if modifier:
-            new_motif.append((new_notes, modifier, duration))
-        else:
-            new_motif.append((new_notes, duration))
-            
-    return new_motif
-
-# ==========================================
-# TECHNIQUE GENERATORS
-# ==========================================
-
-def tremolo(notes_list, duration, modifier=None, speed=0.125):
-    count = int(duration / speed)
-    block = []
-    for _ in range(count):
-        if modifier: block.append((notes_list, modifier, speed))
-        else: block.append((notes_list, speed))
-    return block
-
-def dynamic_tremolo(notes_list, duration, modifier=None, start_speed=0.25, end_speed=0.05):
-    block = []
-    current_time = 0
-    current_speed = start_speed
-    while current_time < duration:
-        if modifier: block.append((notes_list, modifier, current_speed))
-        else: block.append((notes_list, current_speed))
-        current_time += current_speed
-        if current_speed > end_speed: current_speed -= 0.01
-        elif current_speed < end_speed: current_speed += 0.01
-        current_speed = max(0.02, current_speed)
-    return block
-
-def slide(start_note, end_note, duration):
-    step_time = duration / 3
-    return [
-        ([start_note], step_time),
-        ([start_note], "SHIFT", step_time), 
-        ([end_note], step_time)
+    # ==========================================
+    # CORE MOTIFS (Thickened with Harmony)
+    # ==========================================
+    # We now use dyads (two notes) to make it sound fuller
+    main_motif = [
+        (["L5", "M2"], 1.0), # Chord
+        (["M2", "M5"], 0.5),
+        (["M5", "H1"], 2.0), # Held chord
+        (["M6", "M5"], "SHIFT", 0.5), # Slide
+    ]
+    
+    # More active secondary theme
+    secondary_motif = [
+        (["M5", "M2"], 1.0),
+        (["M6", "M3"], 0.5),
+        (["H1", "M5"], 0.5),
+        (["H2", "M6"], 1.0),
+        (["M5"], 1.0)
     ]
 
-def ornament(note, duration, type="trill"):
-    if type == "trill":
-        fast = 0.1
-        main = duration - (fast * 2)
-        return [([note], fast), ([note], "SHIFT", fast), ([note], main)]
-    else:
-        return [([note], "CTRL", 0.15), ([note], duration - 0.15)]
+    # ==========================================
+    # PHRASE BUILDERS
+    # ==========================================
+    
+    def section_intro():
+        t = []
+        t.extend(utils.rest(0.5))
+        # Faster sweeps
+        t.extend(utils.strum(["L1", "L5", "M2"], duration=2.0, speed=0.1))
+        t.extend(utils.strum(["L2", "L6", "M3"], duration=2.0, speed=0.1))
+        t.extend(utils.strum(["L3", "M1", "M5", "H1"], duration=3.0, speed=0.08))
+        # No empty rest here, sustain into theme
+        return t
 
-def arpeggio(chord, note_duration=0.25, direction='up', modifier=None):
-    notes = list(chord)
-    if direction == 'down': notes.reverse()
-    elif direction == 'random': random.shuffle(notes)
-    block = []
-    for note in notes:
-        if modifier: block.append(([note], modifier, note_duration))
-        else: block.append(([note], note_duration))
-    return block
-
-def strum(chord, duration=1.0, speed=0.05, modifier=None):
-    strum_time = len(chord) * speed
-    sustain_time = max(0, duration - strum_time)
-    block = []
-    for note in chord:
-        if modifier: block.append(([note], modifier, speed))
-        else: block.append(([note], speed))
-    if sustain_time > 0: block.append((["REST"], sustain_time))
-    return block
-
-def chug(notes_list, count, duration=0.25):
-    block = []
-    for _ in range(count): block.append((notes_list, duration))
-    return block
-
-def rest(duration):
-    return [(["REST"], duration)]
-
-def style_apply(pattern, style_level="base", scale=SCALES["YU"]):
-    new_pattern = []
-    for instruction in pattern:
-        if len(instruction) == 3: notes, modifier, duration = instruction
-        elif len(instruction) == 2: notes, duration = instruction; modifier = None
-        else: continue
+    def section_main_theme():
+        t = []
+        # progressive_repeat will now use the FIXED develop_motif (no bad notes)
+        # Count increased to 4 to establish groove at higher tempo
+        complex_run = utils.progressive_repeat(main_motif, count=4, scale=SCALE)
+        t.extend(utils.style_apply(complex_run, style_level='expressive'))
         
-        if notes == ["REST"]:
-            new_pattern.append(instruction)
-            continue
+        # Dense answer
+        t.extend(utils.extend_motif(secondary_motif, add_count=4, scale=SCALE))
+        return t
 
-        if style_level == 'virtuoso':
-            if duration >= 1.0 and random.random() > 0.4:
-                scale_segment = [n for n in scale if n in ALL_NOTES[5:15]]
-                fill_notes = random.sample(scale_segment, k=3)
-                new_pattern.extend(arpeggio(fill_notes, 0.125, 'up'))
-                new_pattern.append((random.choice(notes), 'SHIFT', 0.5))
-            else: new_pattern.append(instruction)
+    def section_bridge():
+        t = []
+        chord_progression = [
+            ["L6", "M3", "M6"],
+            ["M1", "M5", "H1"],
+            ["M2", "M6", "H2"]
+        ]
         
-        elif style_level == 'expressive':
-            if random.random() < 0.3:
-                new_pattern.extend(slide(notes[0], notes[0], duration)) 
-            else: new_pattern.append(instruction)
+        for i, chord in enumerate(chord_progression):
+            # Tighter timing on arpeggios
+            t.extend(utils.arpeggio(chord, note_duration=0.2, direction='up')) 
+            t.extend(utils.arpeggio(chord, note_duration=0.1, direction='down'))
+            # Fill the gaps with strums instead of silence
+            if i == 1:
+                t.extend(utils.strum(chord, duration=1.0, speed=0.05))
+        return t
 
-        elif style_level == 'standard':
-            new_pattern.append(instruction)
+    def section_climax():
+        t = []
+        # Constant motion - no single note tapping
+        t.extend(utils.dynamic_tremolo(["L5", "M2", "M5"], duration=3.0, start_speed=0.15, end_speed=0.05))
         
-        elif style_level == 'mute':
-            if random.random() > 0.7: new_pattern.append((["REST"], duration))
-            else: new_pattern.append(instruction)
-        else: new_pattern.append(instruction)
-            
-    return new_pattern
+        run_notes = ["M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5"]
+        # Double chugs for density
+        t.extend(utils.chug([run_notes[0], run_notes[2]], 4, 0.25))
+        t.extend(utils.arpeggio(run_notes[4:], 0.15, 'up'))
+        
+        # Big chords
+        t.extend(utils.strum(["M5", "H2", "H5"], duration=2.0, speed=0.05))
+        t.extend(utils.strum(["M6", "H3", "H6"], duration=2.0, speed=0.05))
+        t.extend(utils.strum(["H1", "H5"], duration=1.0, speed=0.05))
+        return t
 
-# ==========================================
-# DEBUG TOOLS
-# ==========================================
-def check_length(notes, bpm=120):
-    """
-    Prints the duration of a list of notes.
-    Useful for composers checking sections while writing.
-    """
-    total_beats = sum(n[-1] for n in notes)
-    seconds = total_beats * (60.0 / bpm)
-    print(f"Section Length: {seconds:.1f} seconds ({total_beats} beats at {bpm} BPM)")
+    def section_soliloquy():
+        t = []
+        # Faster pacing even in the slow part
+        melody = ["M5", "M3", "M2", "L6", "L5"]
+        for note in melody:
+            t.extend(utils.ornament(note, duration=1.5, type="trill"))
+            # Very short breaths only
+            t.extend(utils.rest(0.25))
+        return t
+
+    def section_outro():
+        t = []
+        t.extend(utils.slide("H5", "M5", duration=2.0))
+        t.extend(utils.strum(["L1", "L5", "M1", "M5", "H1"], duration=6.0, speed=0.2)) 
+        return t
+
+    # ==========================================
+    # ARRANGEMENT
+    # ==========================================
+    
+    track.extend(section_intro())                   
+    track.extend(section_main_theme())        
+    track.extend(section_bridge())
+    track.extend(section_main_theme()) 
+    
+    track.extend(section_climax())                  
+    track.extend(section_soliloquy())               
+    
+    track.extend(section_outro())                   
+        
+    return {
+        "title": TITLE,
+        "bpm": BPM,
+        "notes": track
+    }
