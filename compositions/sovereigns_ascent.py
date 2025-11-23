@@ -1,17 +1,17 @@
 """
 sovereigns_ascent.py
 A grand, sweeping Guqin piece.
-v13.0: FLUIDITY UPDATE.
-       - Optimized for Bard v19.
-       - Removed safety rests in Soliloquy.
+v13.1: FLUIDITY UPDATE (Smart Hand Optimized).
+       - Optimized for Bard v19.1.
+       - Soliloquy: Restored dramatic pauses (Rest Safe).
        - Tightened Waterfall Bridge timing.
-Last Update: 2025-11-23 14:05 EST
+Last Update: 2025-11-23 15:15 EST
 """
 import MusicUtils as utils
 import random
 
 def compose():
-    TITLE = "The Sovereign's Ascent (Fluid v13)"
+    TITLE = "The Sovereign's Ascent (Smart v13.1)"
     BPM = 96  
     SCALE = utils.SCALES["GONG"]
     
@@ -60,12 +60,11 @@ def compose():
 
     def section_soliloquy():
         t = []
-        # UPDATED: No Rests. Continuous flow using the new engine speed.
+        # Restored pauses now that Rests are safe in v19.1
         melody = ["H5", "H2", "M6", "H1"]
         for n in melody:
-            t.extend(utils.ornament(n, duration=2.5, type="vibrato")) 
-            # Replaced rest with a quick slide transition
-            t.extend(utils.slide(n, n, 0.5)) 
+            t.extend(utils.ornament(n, duration=2.0, type="vibrato")) 
+            t.extend(utils.rest(0.5)) # Breath
             
         t.extend(utils.slide("H2", "M5", 3.0))
         return t

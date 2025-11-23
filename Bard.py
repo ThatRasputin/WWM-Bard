@@ -1,11 +1,10 @@
 """
 Bard.py
 The Player Engine (Single-Thread Focus).
-v19.0: SMART HAND UPDATE.
-       - Implemented 'Modifier Latching': Holds Shift/Ctrl across consecutive notes.
-       - Logic: Press Mod -> Play Note -> Play Note -> Release Mod.
-       - Fixed Timing: Ensures modifier is active before note strike.
-Last Update: 2025-11-23 13:55 EST
+v19.1: SMART HAND HOTFIX.
+       - Fixed: Filtered 'None' values from key lists to prevent crashes on REST instructions.
+       - Retains 'Modifier Latching' from v19.0.
+Last Update: 2025-11-23 15:15 EST
 """
 import time
 import ctypes
@@ -27,7 +26,7 @@ SONGS_DIR = "songs"
 HUMANIZE_TIMING = True  
 TIMING_VARIANCE = 0.002 
 PRESS_DURATION = 0.03   # Short reliable tap
-MOD_LEAD_TIME = 0.05    # Time to hold Shift before pressing note (User req: "Slightly before")
+MOD_LEAD_TIME = 0.05    # Time to hold Shift before pressing note
 
 # ==========================================
 # DIRECT INPUT SETUP
@@ -46,6 +45,7 @@ class Input(ctypes.Structure):
     _fields_ = [("type", ctypes.c_ulong), ("ii", Input_I)]
 
 def PressKey(hexKeyCode):
+    if hexKeyCode is None: return
     extra = ctypes.c_ulong(0)
     ii_ = Input_I()
     ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008, 0, ctypes.pointer(extra))
@@ -53,6 +53,7 @@ def PressKey(hexKeyCode):
     ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
 def ReleaseKey(hexKeyCode):
+    if hexKeyCode is None: return
     extra = ctypes.c_ulong(0)
     ii_ = Input_I()
     ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008 | 0x0002, 0, ctypes.pointer(extra))
@@ -107,7 +108,7 @@ def play_song_from_file(filepath):
 
     total_duration = get_song_duration(notes, bpm)
     elapsed_time = 0.0
-    active_modifier = None # Track what we are currently holding
+    active_modifier = None 
 
     print(f"\n>>> NOW PLAYING: {title} <<<")
     print(f"(Press 'ESC' to stop)")
@@ -124,17 +125,14 @@ def play_song_from_file(filepath):
             # --- 1. MODIFIER MANAGEMENT (LATCHING) ---
             mod_code = KEYS.get(mod_req) if mod_req else None
             
-            # If we need a DIFFERENT modifier (or None) than what is held:
             if active_modifier != mod_req:
-                # Release old one if it exists
                 if active_modifier:
                     old_code = KEYS.get(active_modifier)
                     if old_code: ReleaseKey(old_code)
                 
-                # Press new one if needed
                 if mod_req and mod_code:
                     PressKey(mod_code)
-                    time.sleep(MOD_LEAD_TIME) # "Slightly before"
+                    time.sleep(MOD_LEAD_TIME)
                 
                 active_modifier = mod_req
 
@@ -144,23 +142,21 @@ def play_song_from_file(filepath):
             actual_total_duration = base_sleep + random.uniform(0, TIMING_VARIANCE)
             
             start_press = time.time()
-            keys_to_press = [KEYS[n] for n in notes_raw if n in KEYS]
+            
+            # --- FIX v19.1: Filter None values (Rests) ---
+            keys_to_press = [KEYS[n] for n in notes_raw if n in KEYS and KEYS[n] is not None]
             
             if keys_to_press:
                 for k in keys_to_press: PressKey(k)
                 time.sleep(PRESS_DURATION)
                 for k in keys_to_press: ReleaseKey(k)
             
-            # Calculate time spent pressing
             press_overhead = time.time() - start_press
             
             # --- 3. LOOKAHEAD STRATEGY ---
-            # Check if the NEXT note needs the SAME modifier.
-            # If NO, release it now. If YES, keep holding it.
             should_release_mod = True
             if i + 1 < len(notes):
                 next_inst = notes[i+1]
-                # Check next mod requirements
                 if len(next_inst) == 3: next_mod = next_inst[1]
                 else: next_mod = None
                 
@@ -178,16 +174,13 @@ def play_song_from_file(filepath):
             remaining_time = max(0, actual_total_duration - press_overhead)
             if interruptible_sleep(remaining_time):
                 print("\n[!] Music stopped by user.")
-                # EMERGENCY RELEASE
-                if active_modifier:
-                    k = KEYS.get(active_modifier)
-                    if k: ReleaseKey(k)
+                if active_modifier and mod_code:
+                    ReleaseKey(mod_code)
                 return
 
             elapsed_time += (duration * (60.0 / bpm))
             
     finally:
-        # Safety Release on crash/finish
         if active_modifier:
              k = KEYS.get(active_modifier)
              if k: ReleaseKey(k)
@@ -201,7 +194,7 @@ def main():
         files = glob.glob(os.path.join(SONGS_DIR, "*.json"))
         
         print("\n" + "="*40)
-        print("   WHERE WINDS MEET - AUTO-BARD (v19)")
+        print("   WHERE WINDS MEET - AUTO-BARD (v19.1)")
         print("="*40)
         
         if not files:
@@ -211,12 +204,15 @@ def main():
 
         for i, fpath in enumerate(files):
             with open(fpath, 'r') as f:
-                meta = json.load(f)
-                bpm = meta.get("bpm", 120)
-                if 'notes' in meta: notes = meta['notes']
-                elif 'tracks' in meta: notes = meta['tracks'].get('Lead_Melody', [])
-                else: notes = []
-                print(f"{i+1}. {meta.get('title', 'Unknown')} [{format_time(get_song_duration(notes, bpm))}]")
+                try:
+                    meta = json.load(f)
+                    bpm = meta.get("bpm", 120)
+                    if 'notes' in meta: notes = meta['notes']
+                    elif 'tracks' in meta: notes = meta['tracks'].get('Lead_Melody', [])
+                    else: notes = []
+                    print(f"{i+1}. {meta.get('title', 'Unknown')} [{format_time(get_song_duration(notes, bpm))}]")
+                except:
+                    print(f"{i+1}. [Corrupt File] {os.path.basename(fpath)}")
                 
         print(f"Q. Quit")
         
