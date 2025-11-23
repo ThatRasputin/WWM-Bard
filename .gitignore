@@ -1,0 +1,11 @@
+# Python Internals
+pycache/*.py[cod]
+
+# OS Junk
+.DS_Store
+Thumbs.db
+
+# Songs
+# To back up song JSON files, remove the following line. 
+# Composition files will still be tracked.
+songs/*.json
