@@ -1,7 +1,7 @@
 """
 Songwriter.py
 Compiles composition modules into playable JSON files.
-Last Update: 2025-11-22 00:20 EST (v10.0 - Multi-Format Compilation)
+Last Update: 2025-11-22 20:45 EST (v11.0 - Added Duration Calc)
 """
 import os
 import json
@@ -19,8 +19,29 @@ def ensure_output_dir():
         os.makedirs(OUTPUT_DIR)
         print(f"[+] Created '{OUTPUT_DIR}' folder.")
 
+def get_duration_str(song_data):
+    """Calculates formatted duration (MM:SS) from song data."""
+    bpm = song_data.get('bpm', 120)
+    notes = song_data.get('notes', [])
+    
+    # Handle legacy multi-track if necessary
+    if not notes and 'tracks' in song_data:
+         notes = song_data['tracks'].get('Lead_Melody', [])
+
+    if not notes:
+        return "00:00"
+
+    # Sum the last element of every instruction (the duration)
+    total_beats = sum(instruction[-1] for instruction in notes)
+    total_seconds = total_beats * (60.0 / bpm)
+    
+    m = int(total_seconds // 60)
+    s = int(total_seconds % 60)
+    return f"{m:02d}:{s:02d}"
+
 def save_song(filename, song_data):
     path = os.path.join(OUTPUT_DIR, filename)
+    duration_str = get_duration_str(song_data)
     
     # Check status before writing
     if os.path.exists(path):
@@ -29,7 +50,7 @@ def save_song(filename, song_data):
                 existing_data = json.load(f)
             
             if existing_data == song_data:
-                print(f"[=] Skipped (Unchanged): {song_data.get('title', filename)}")
+                print(f"[=] Skipped (Unchanged): {song_data.get('title', filename)} [{duration_str}]")
                 return
             
             status_msg = "[~] Overwrote"
@@ -41,7 +62,8 @@ def save_song(filename, song_data):
     # Write file
     with open(path, 'w') as f:
         json.dump(song_data, f, indent=2)
-    print(f"{status_msg}: {song_data.get('title', filename)} -> {path}")
+    
+    print(f"{status_msg}: {song_data.get('title', filename)} [{duration_str}] -> {path}")
 
 def load_and_compile():
     print(f"\nScanning '{COMPOSITIONS_DIR}/' for tracks...\n")
@@ -78,8 +100,6 @@ def load_and_compile():
                     json_name = filename.replace(".py", ".json")
                     save_song(json_name, song_data)
                 else:
-                    # This now handles the specific failure case where a dict was returned 
-                    # but the required keys were not present.
                     print(f"[!] Error in {filename}: Returned dictionary is missing required 'title', 'notes', or 'tracks' keys.")
             else:
                 print(f"[-] Skipped {filename}: No compose() function found.")

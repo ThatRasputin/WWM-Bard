@@ -1,7 +1,7 @@
 """
 Bard.py
 The Player Engine (Single-Thread Focus).
-Last Update: 2025-11-22 00:23 EST (v15.0 - Reverted to Single Track)
+Last Update: 2025-11-22 20:50 EST (v16.0 - Menu Duration Display)
 """
 import time
 import ctypes
@@ -10,7 +10,6 @@ import os
 import json
 import glob
 import random
-# Removed threading import
 
 # ==========================================
 # CONFIGURATION
@@ -92,7 +91,6 @@ def play_chord(note_data, duration, bpm):
     mod_code = KEYS.get(modifier) if modifier else None
     
     if keys_to_press:
-        # EXECUTION SEQUENCE (Identical to previous single-track logic)
         if mod_code:
             PressKey(mod_code)
             time.sleep(MOD_LEAD_TIME)
@@ -117,8 +115,6 @@ def get_song_duration(notes, bpm):
     return total_beats * (60.0 / bpm)
 
 def play_song_from_file(filepath):
-    # No global stop flag needed in single-thread mode
-    
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -129,14 +125,10 @@ def play_song_from_file(filepath):
     title = data.get('title', 'Unknown')
     bpm = data.get("bpm", 120)
     
-    # Check for both formats: use 'notes' key if available, else flatten 'tracks'
     if 'notes' in data:
         notes = data.get('notes', [])
     elif 'tracks' in data:
-        # CONVERSION: Flatten all tracks into one sequence (simulating threads)
-        # This is where we manually interleave the notes if we had multiple tracks
         print("[!] Warning: Converting multi-track JSON to single-thread sequence.")
-        # NOTE: For simplicity and to fix the noise issue, we will only play the LEAD track.
         notes = data['tracks'].get('Lead_Melody', [])
     else:
         print("[!] Error: No valid 'notes' or 'tracks' found.")
@@ -185,7 +177,22 @@ def main():
         for i, fpath in enumerate(files):
             with open(fpath, 'r') as f:
                 meta = json.load(f)
-                print(f"{i+1}. {meta.get('title', 'Unknown')}")
+                
+                # --- NEW DURATION DISPLAY LOGIC ---
+                bpm = meta.get("bpm", 120)
+                if 'notes' in meta:
+                    notes = meta['notes']
+                elif 'tracks' in meta:
+                    notes = meta['tracks'].get('Lead_Melody', [])
+                else:
+                    notes = []
+                
+                total_sec = get_song_duration(notes, bpm)
+                time_str = format_time(total_sec)
+                # ----------------------------------
+                
+                print(f"{i+1}. {meta.get('title', 'Unknown')} [{time_str}]")
+                
         print(f"Q. Quit")
         
         start_time = time.time()

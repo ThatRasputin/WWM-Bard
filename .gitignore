@@ -1,5 +1,5 @@
 # Python Internals
-pycache/*.py[cod]
+__pycache__/
 
 # OS Junk
 .DS_Store
