@@ -1,130 +1,136 @@
 """
 sovereigns_ascent.py
 A grand, sweeping Guqin piece.
-v6.0: Increased Density and Tempo. Fixed Dissonance via MusicUtils v20.
-Last Update: 2025-11-22 22:35 EST
+v13.0: FLUIDITY UPDATE.
+       - Optimized for Bard v19.
+       - Removed safety rests in Soliloquy.
+       - Tightened Waterfall Bridge timing.
+Last Update: 2025-11-23 14:05 EST
 """
 import MusicUtils as utils
 import random
 
 def compose():
-    # ==========================================
-    # SETTINGS
-    # ==========================================
-    TITLE = "The Sovereign's Ascent"
-    BPM = 110 # Increased from 85 to reduce dragging
-    SCALE = utils.SCALES["GONG"] 
+    TITLE = "The Sovereign's Ascent (Fluid v13)"
+    BPM = 96  
+    SCALE = utils.SCALES["GONG"]
     
     track = []
 
-    # ==========================================
-    # CORE MOTIFS (Thickened with Harmony)
-    # ==========================================
-    # We now use dyads (two notes) to make it sound fuller
-    main_motif = [
-        (["L5", "M2"], 1.0), # Chord
-        (["M2", "M5"], 0.5),
-        (["M5", "H1"], 2.0), # Held chord
-        (["M6", "M5"], "SHIFT", 0.5), # Slide
+    theme_main = [
+        (["L5", "M2"], 1.0), (["M1", "M5"], 0.5), (["M2", "M6"], 1.0), (["M5", "H1"], 1.5),
+        (["H2", "M6"], 1.0), (["H1", "M5"], 1.0), (["M6", "M3"], 0.5), (["M5", "L5"], 2.0)
     ]
     
-    # More active secondary theme
-    secondary_motif = [
-        (["M5", "M2"], 1.0),
-        (["M6", "M3"], 0.5),
-        (["H1", "M5"], 0.5),
-        (["H2", "M6"], 1.0),
-        (["M5"], 1.0)
+    theme_counter = [
+        (["H3", "H6"], 1.0), (["H2", "H5"], 1.0), (["H1", "H3"], 0.5), (["M6", "H1"], 0.5),
+        (["M5", "M2"], 1.0), (["M3", "L6"], 1.0), (["L5", "M1"], 3.0)
     ]
 
-    # ==========================================
-    # PHRASE BUILDERS
-    # ==========================================
-    
-    def section_intro():
+    def movement_1_earth():
         t = []
-        t.extend(utils.rest(0.5))
-        # Faster sweeps
-        t.extend(utils.strum(["L1", "L5", "M2"], duration=2.0, speed=0.1))
-        t.extend(utils.strum(["L2", "L6", "M3"], duration=2.0, speed=0.1))
-        t.extend(utils.strum(["L3", "M1", "M5", "H1"], duration=3.0, speed=0.08))
-        # No empty rest here, sustain into theme
+        t.extend(utils.strum(["L1", "L5", "M2"], duration=4.0, speed=0.25))
+        t.extend(utils.strum(["L2", "M1", "M5"], duration=4.0, speed=0.25))
+        t.extend(utils.strum(["L5", "M2", "M6"], duration=4.0, speed=0.25))
+        
+        t.extend(utils.style_apply(theme_main, 'standard'))
+        heavy_theme = utils.develop_motif(theme_main, evolution='expansion', scale=SCALE)
+        t.extend(utils.style_apply(heavy_theme, 'expressive'))
+        
+        low_walk = ["L5", "L6", "M1", "M2", "M3", "M2", "M1", "L6"]
+        for n in low_walk:
+            t.extend(utils.strum([n, "L1"], duration=2.0, speed=0.15))
         return t
 
-    def section_main_theme():
+    def movement_2_wind():
         t = []
-        # progressive_repeat will now use the FIXED develop_motif (no bad notes)
-        # Count increased to 4 to establish groove at higher tempo
-        complex_run = utils.progressive_repeat(main_motif, count=4, scale=SCALE)
-        t.extend(utils.style_apply(complex_run, style_level='expressive'))
+        t.extend(utils.slide("M2", "H2", 2.0))
+        t.extend(utils.slide("H2", "M5", 2.0))
         
-        # Dense answer
-        t.extend(utils.extend_motif(secondary_motif, add_count=4, scale=SCALE))
-        return t
-
-    def section_bridge():
-        t = []
-        chord_progression = [
-            ["L6", "M3", "M6"],
-            ["M1", "M5", "H1"],
-            ["M2", "M6", "H2"]
-        ]
+        inverted = utils.develop_motif(theme_main, evolution='inversion', scale=SCALE)
+        t.extend(utils.style_apply(inverted, 'expressive'))
         
-        for i, chord in enumerate(chord_progression):
-            # Tighter timing on arpeggios
-            t.extend(utils.arpeggio(chord, note_duration=0.2, direction='up')) 
-            t.extend(utils.arpeggio(chord, note_duration=0.1, direction='down'))
-            # Fill the gaps with strums instead of silence
-            if i == 1:
-                t.extend(utils.strum(chord, duration=1.0, speed=0.05))
-        return t
-
-    def section_climax():
-        t = []
-        # Constant motion - no single note tapping
-        t.extend(utils.dynamic_tremolo(["L5", "M2", "M5"], duration=3.0, start_speed=0.15, end_speed=0.05))
+        inverted_var = utils.develop_motif(inverted, evolution='variation', scale=SCALE)
+        t.extend(utils.style_apply(inverted_var, 'virtuoso'))
         
-        run_notes = ["M2", "M3", "M5", "M6", "H1", "H2", "H3", "H5"]
-        # Double chugs for density
-        t.extend(utils.chug([run_notes[0], run_notes[2]], 4, 0.25))
-        t.extend(utils.arpeggio(run_notes[4:], 0.15, 'up'))
-        
-        # Big chords
-        t.extend(utils.strum(["M5", "H2", "H5"], duration=2.0, speed=0.05))
-        t.extend(utils.strum(["M6", "H3", "H6"], duration=2.0, speed=0.05))
-        t.extend(utils.strum(["H1", "H5"], duration=1.0, speed=0.05))
+        textures = ["H5", "H6", "H3", "H2"]
+        for n in textures:
+            t.extend(utils.ornament(n, duration=3.0, type="trill"))
         return t
 
     def section_soliloquy():
         t = []
-        # Faster pacing even in the slow part
-        melody = ["M5", "M3", "M2", "L6", "L5"]
-        for note in melody:
-            t.extend(utils.ornament(note, duration=1.5, type="trill"))
-            # Very short breaths only
-            t.extend(utils.rest(0.25))
+        # UPDATED: No Rests. Continuous flow using the new engine speed.
+        melody = ["H5", "H2", "M6", "H1"]
+        for n in melody:
+            t.extend(utils.ornament(n, duration=2.5, type="vibrato")) 
+            # Replaced rest with a quick slide transition
+            t.extend(utils.slide(n, n, 0.5)) 
+            
+        t.extend(utils.slide("H2", "M5", 3.0))
         return t
 
-    def section_outro():
+    def movement_3_fire():
         t = []
-        t.extend(utils.slide("H5", "M5", duration=2.0))
-        t.extend(utils.strum(["L1", "L5", "M1", "M5", "H1"], duration=6.0, speed=0.2)) 
+        roots = ["M2", "M5", "M6", "H1", "M6", "M5", "M2", "L5"]
+        for root in roots:
+            t.extend(utils.chug([root, "L5"], count=4, duration=0.25)) 
+            t.extend(utils.strum([root, "M5", "H2"], duration=3.0, speed=0.05)) 
+            
+        run_notes = ["M5", "M6", "H1", "H2", "H3", "H5"]
+        t.extend(utils.arpeggio(run_notes, 0.15, 'up'))   
+        t.extend(utils.arpeggio(run_notes, 0.15, 'down')) 
+        t.extend(utils.chug(["H5"], 4, 0.25)) 
+        t.extend(utils.arpeggio(run_notes, 0.15, 'random'))
+        t.extend(utils.arpeggio(run_notes, 0.15, 'up'))
+        t.extend(utils.strum(["H1", "H5"], 4.0, 0.05))
         return t
 
-    # ==========================================
-    # ARRANGEMENT
-    # ==========================================
-    
-    track.extend(section_intro())                   
-    track.extend(section_main_theme())        
-    track.extend(section_bridge())
-    track.extend(section_main_theme()) 
-    
-    track.extend(section_climax())                  
-    track.extend(section_soliloquy())               
-    
-    track.extend(section_outro())                   
+    def movement_4_water():
+        t = []
+        chords = [
+            ["H5", "H3", "H1", "M6"], ["H3", "H2", "M6", "M5"], 
+            ["H2", "H1", "M5", "M3"], ["H1", "M6", "M3", "M2"], ["M6", "M5", "M2", "L5"]
+        ]
         
+        for chord in chords:
+            t.extend(utils.arpeggio(chord, note_duration=0.20, direction='down'))
+            up_chord = chord[::-1] 
+            t.extend(utils.strum(up_chord, duration=4.0, speed=0.15)) 
+            t.extend(utils.ornament(chord[0], 2.0, "trill"))
+            
+        circle = ["M5", "M6", "H1", "M6"]
+        t.extend(utils.arpeggio(circle, 0.2, 'up'))
+        t.extend(utils.arpeggio(circle, 0.25, 'up')) 
+        t.extend(utils.arpeggio(circle, 0.3, 'up'))  
+        t.extend(utils.strum(["L1", "L5", "M1", "M5"], 6.0, 0.2))
+        return t
+
+    def section_finale():
+        t = []
+        t.extend(utils.dynamic_tremolo(["L5", "M2", "M5", "H2"], duration=10.0, start_speed=0.1, end_speed=0.3))
+        
+        final_chords = [
+            (["L1", "L5", "M2"], 6.0),
+            (["L2", "L6", "M3"], 6.0),
+            (["L5", "M2", "M5", "H2"], 10.0) 
+        ]
+        
+        for chord_data in final_chords:
+            notes, dur = chord_data
+            t.extend(utils.strum(notes, duration=dur, speed=0.2))
+        return t
+
+    track.extend(utils.rest(0.5))
+    track.extend(movement_1_earth())
+    track.extend(movement_2_wind())
+    track.extend(section_soliloquy())
+    track.extend(movement_3_fire())
+    track.extend(movement_4_water())
+    track.extend(utils.style_apply(theme_main, 'virtuoso'))
+    track.extend(utils.style_apply(theme_counter, 'virtuoso'))
+    track.extend(section_finale())
+    
     return {
         "title": TITLE,
         "bpm": BPM,

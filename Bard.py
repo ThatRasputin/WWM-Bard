@@ -1,7 +1,11 @@
 """
 Bard.py
 The Player Engine (Single-Thread Focus).
-Last Update: 2025-11-22 21:10 EST (v17.0 - Responsive Stop)
+v19.0: SMART HAND UPDATE.
+       - Implemented 'Modifier Latching': Holds Shift/Ctrl across consecutive notes.
+       - Logic: Press Mod -> Play Note -> Play Note -> Release Mod.
+       - Fixed Timing: Ensures modifier is active before note strike.
+Last Update: 2025-11-23 13:55 EST
 """
 import time
 import ctypes
@@ -14,16 +18,16 @@ import random
 # ==========================================
 # CONFIGURATION
 # ==========================================
-VK_ESCAPE = 0x1B        # Virtual Key for ESC
-COUNTDOWN_SEC = 5       # Seconds to switch window
-TIMEOUT_SECONDS = 20    # Menu auto-pick timeout
+VK_ESCAPE = 0x1B        
+COUNTDOWN_SEC = 5       
+TIMEOUT_SECONDS = 20    
 SONGS_DIR = "songs"     
 
 # === TIMING SETTINGS ===
 HUMANIZE_TIMING = True  
-TIMING_VARIANCE = 0.005 
-PRESS_DURATION = 0.05   
-MOD_LEAD_TIME = 0.15    
+TIMING_VARIANCE = 0.002 
+PRESS_DURATION = 0.03   # Short reliable tap
+MOD_LEAD_TIME = 0.05    # Time to hold Shift before pressing note (User req: "Slightly before")
 
 # ==========================================
 # DIRECT INPUT SETUP
@@ -68,79 +72,22 @@ def format_time(seconds):
     return f"{m:02d}:{s:02d}"
 
 def interruptible_sleep(duration):
-    """
-    Sleeps for 'duration' seconds, but checks for ESC key every 0.05s.
-    Returns True if interrupted by user, False otherwise.
-    """
+    if duration <= 0: return False
     end_time = time.time() + duration
     while time.time() < end_time:
-        # Check ESC key
         if ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000:
             return True
-        
-        # Sleep in tiny increments to allow polling
-        sleep_chunk = min(0.05, end_time - time.time())
+        sleep_chunk = min(0.02, end_time - time.time())
         if sleep_chunk > 0:
             time.sleep(sleep_chunk)
     return False
 
-def play_chord(note_data, duration, bpm):
-    seconds_per_beat = 60.0 / bpm
-    base_sleep = duration * seconds_per_beat
-    actual_total_duration = base_sleep + random.uniform(0, TIMING_VARIANCE)
-
-    keys_to_press = []
-    modifier = None
-
-    if len(note_data) == 2:
-        notes_raw, _ = note_data 
-    elif len(note_data) == 3:
-        notes_raw, modifier, _ = note_data
-    else:
-        notes_raw = note_data 
-
-    if isinstance(notes_raw, str): notes_raw = [notes_raw]
-
-    for n in notes_raw:
-        k = KEYS.get(n)
-        if k: keys_to_press.append(k)
-
-    mod_code = KEYS.get(modifier) if modifier else None
-    
-    # === CHECK ESC BEFORE PLAYING ===
-    if ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000:
-        return True
-
-    if keys_to_press:
-        if mod_code:
-            PressKey(mod_code)
-            time.sleep(MOD_LEAD_TIME)
-        for k in keys_to_press:
-            PressKey(k)
-        time.sleep(PRESS_DURATION)
-        for k in keys_to_press:
-            ReleaseKey(k)
-        if mod_code:
-            time.sleep(0.01)
-            ReleaseKey(mod_code)
-        
-        overhead = PRESS_DURATION + (MOD_LEAD_TIME if mod_code else 0) + (0.05 if mod_code else 0)
-        remaining_time = max(0, actual_total_duration - overhead)
-        
-        # USE INTERRUPTIBLE SLEEP
-        if interruptible_sleep(remaining_time):
-            return True
-    else:
-        # REST case
-        if interruptible_sleep(actual_total_duration):
-            return True
-            
-    return False
+# ==========================================
+# PLAYER ENGINE
+# ==========================================
 
 def get_song_duration(notes, bpm):
-    total_beats = 0
-    for instruction in notes:
-        total_beats += instruction[-1]
+    total_beats = sum(instruction[-1] for instruction in notes)
     return total_beats * (60.0 / bpm)
 
 def play_song_from_file(filepath):
@@ -154,56 +101,107 @@ def play_song_from_file(filepath):
     title = data.get('title', 'Unknown')
     bpm = data.get("bpm", 120)
     
-    if 'notes' in data:
-        notes = data.get('notes', [])
-    elif 'tracks' in data:
-        print("[!] Warning: Converting multi-track JSON to single-thread sequence.")
-        notes = data['tracks'].get('Lead_Melody', [])
-    else:
-        print("[!] Error: No valid 'notes' or 'tracks' found.")
-        return
+    if 'notes' in data: notes = data.get('notes', [])
+    elif 'tracks' in data: notes = data['tracks'].get('Lead_Melody', [])
+    else: return
 
     total_duration = get_song_duration(notes, bpm)
     elapsed_time = 0.0
+    active_modifier = None # Track what we are currently holding
 
     print(f"\n>>> NOW PLAYING: {title} <<<")
     print(f"(Press 'ESC' to stop)")
-
-    # Clear any lingering ESC presses before starting
-    ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE)
+    ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) # Clear buffer
 
     try:
-        for instruction in notes:
-            # Check logic is now handled inside play_chord for responsiveness
+        for i, instruction in enumerate(notes):
+            # Parse Instruction
+            if len(instruction) == 3: notes_raw, mod_req, duration = instruction
+            else: notes_raw, duration = instruction; mod_req = None
             
+            if isinstance(notes_raw, str): notes_raw = [notes_raw]
+            
+            # --- 1. MODIFIER MANAGEMENT (LATCHING) ---
+            mod_code = KEYS.get(mod_req) if mod_req else None
+            
+            # If we need a DIFFERENT modifier (or None) than what is held:
+            if active_modifier != mod_req:
+                # Release old one if it exists
+                if active_modifier:
+                    old_code = KEYS.get(active_modifier)
+                    if old_code: ReleaseKey(old_code)
+                
+                # Press new one if needed
+                if mod_req and mod_code:
+                    PressKey(mod_code)
+                    time.sleep(MOD_LEAD_TIME) # "Slightly before"
+                
+                active_modifier = mod_req
+
+            # --- 2. NOTE PLAYBACK ---
+            seconds_per_beat = 60.0 / bpm
+            base_sleep = duration * seconds_per_beat
+            actual_total_duration = base_sleep + random.uniform(0, TIMING_VARIANCE)
+            
+            start_press = time.time()
+            keys_to_press = [KEYS[n] for n in notes_raw if n in KEYS]
+            
+            if keys_to_press:
+                for k in keys_to_press: PressKey(k)
+                time.sleep(PRESS_DURATION)
+                for k in keys_to_press: ReleaseKey(k)
+            
+            # Calculate time spent pressing
+            press_overhead = time.time() - start_press
+            
+            # --- 3. LOOKAHEAD STRATEGY ---
+            # Check if the NEXT note needs the SAME modifier.
+            # If NO, release it now. If YES, keep holding it.
+            should_release_mod = True
+            if i + 1 < len(notes):
+                next_inst = notes[i+1]
+                # Check next mod requirements
+                if len(next_inst) == 3: next_mod = next_inst[1]
+                else: next_mod = None
+                
+                if next_mod == active_modifier:
+                    should_release_mod = False
+            
+            if should_release_mod and active_modifier:
+                if mod_code: ReleaseKey(mod_code)
+                active_modifier = None
+
+            # --- 4. SLEEP & DISPLAY ---
             timer_str = f"[{format_time(elapsed_time)} / {format_time(total_duration)}]"
             print(f"\rPlaying... {timer_str}   ", end="")
             
-            duration = instruction[-1]
-            
-            # PLAY CHORD RETURNS TRUE IF INTERRUPTED
-            interrupted = play_chord(instruction, duration, bpm)
-            
-            if interrupted:
+            remaining_time = max(0, actual_total_duration - press_overhead)
+            if interruptible_sleep(remaining_time):
                 print("\n[!] Music stopped by user.")
+                # EMERGENCY RELEASE
+                if active_modifier:
+                    k = KEYS.get(active_modifier)
+                    if k: ReleaseKey(k)
                 return
 
             elapsed_time += (duration * (60.0 / bpm))
             
     finally:
-        pass
+        # Safety Release on crash/finish
+        if active_modifier:
+             k = KEYS.get(active_modifier)
+             if k: ReleaseKey(k)
             
     print(f"\r[√] Song finished: {format_time(total_duration)}          \n")
 
 def main():
-    if not os.path.exists(SONGS_DIR):
-        os.makedirs(SONGS_DIR)
+    if not os.path.exists(SONGS_DIR): os.makedirs(SONGS_DIR)
         
     while True:
         files = glob.glob(os.path.join(SONGS_DIR, "*.json"))
         
         print("\n" + "="*40)
-        print("   WHERE WINDS MEET - AUTO-BARD")
+        print("   WHERE WINDS MEET - AUTO-BARD (v19)")
         print("="*40)
         
         if not files:
@@ -214,21 +212,11 @@ def main():
         for i, fpath in enumerate(files):
             with open(fpath, 'r') as f:
                 meta = json.load(f)
-                
-                # --- NEW DURATION DISPLAY LOGIC ---
                 bpm = meta.get("bpm", 120)
-                if 'notes' in meta:
-                    notes = meta['notes']
-                elif 'tracks' in meta:
-                    notes = meta['tracks'].get('Lead_Melody', [])
-                else:
-                    notes = []
-                
-                total_sec = get_song_duration(notes, bpm)
-                time_str = format_time(total_sec)
-                # ----------------------------------
-                
-                print(f"{i+1}. {meta.get('title', 'Unknown')} [{time_str}]")
+                if 'notes' in meta: notes = meta['notes']
+                elif 'tracks' in meta: notes = meta['tracks'].get('Lead_Melody', [])
+                else: notes = []
+                print(f"{i+1}. {meta.get('title', 'Unknown')} [{format_time(get_song_duration(notes, bpm))}]")
                 
         print(f"Q. Quit")
         
@@ -237,8 +225,7 @@ def main():
         
         while True:
             if time.time() - start_time > TIMEOUT_SECONDS:
-                rnd_idx = random.randint(0, len(files) - 1)
-                choice = str(rnd_idx + 1)
+                choice = str(random.randint(0, len(files) - 1) + 1)
                 break
             if msvcrt.kbhit():
                 choice = msvcrt.getwche().lower()
